@@ -7,6 +7,7 @@ from .file_info import collect_file_info
 from .extract_pillow import extract_pillow
 from .extract_exifread import extract_exifread
 from .extract_xmp import extract_xmp
+from .ai_detect import analyze_ai_indicators
 
 SUPPORTED_EXTENSIONS = {
     "jpg", "jpeg", "png", "tiff", "tif", "webp", "heic", "heif", "bmp", "gif"
@@ -49,11 +50,27 @@ def process_image(path: str) -> dict:
 
     merged_exif = _merge_exif(pillow_result.get("exif", {}), exifread_result.get("tags", {}))
 
+    # AI-generation indicators (offline heuristics + C2PA + FFT)
+    ai_block = None
+    try:
+        raw_bytes = None
+        try:
+            with open(path, "rb") as fh:
+                raw_bytes = fh.read()
+        except Exception:
+            raw_bytes = None
+        ai_block = analyze_ai_indicators(
+            path, merged_exif, xmp_result.get("xmp") if xmp_result.get("present") else None, raw_bytes
+        )
+    except Exception as e:
+        record["errors"].append(f"ai_detect: {type(e).__name__}: {e}")
+
     record["metadata"] = {
         "image": pillow_result.get("image", {}),
         "exif": merged_exif,
         "gps": pillow_result.get("gps"),
         "xmp": xmp_result.get("xmp") if xmp_result.get("present") else None,
+        "ai_indicators": ai_block,
     }
     return record
 
