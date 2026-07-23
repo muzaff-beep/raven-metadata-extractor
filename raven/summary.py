@@ -20,7 +20,7 @@ def _parse_exif_datetime(value: Any) -> Optional[datetime]:
     s = str(value).strip()
     for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y:%m:%d", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(s[:len(fmt) + 4], fmt)
+            return datetime.strptime(s, fmt)
         except ValueError:
             continue
     m = re.match(r"(\d{4})[:\-](\d{2})[:\-](\d{2})", s)

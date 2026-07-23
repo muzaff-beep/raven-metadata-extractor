@@ -13,9 +13,17 @@ _AI_SOFTWARE_MARKERS = [
     "dall-e", "dall e", "dalle", "midjourney", "stable diffusion", "stablediffusion",
     "sdxl", "comfyui", "automatic1111", "invokeai", "leonardo.ai", "leonardo ai",
     "firefly", "adobe firefly", "flux", "imagen", "ideogram", "novelai",
-    "playground.ai", "playground ai", "runway", "gpt-4o", "gpt image", "grok",
-    "nano banana", "gemini", "recraft", "krea", "generated with ai", "ai generated",
+    "playground.ai", "playground ai", "runway", "gpt-4o", "gpt image",
+    "nano banana", "recraft", "krea", "generated with ai", "ai generated",
 ]
+
+# Ambiguous words that are only meaningful as AI-tool markers when paired with
+# an AI-ish context word (avoids false positives from unrelated captions/names
+# mentioning "Grok" or "Gemini" the constellation/product in another sense).
+_AMBIGUOUS_MARKERS_NEED_CONTEXT = {
+    "grok": ["xai", "image", "generat"],
+    "gemini": ["google", "image", "generat", "nano banana"],
+}
 
 # EXIF keys whose presence indicates a real capture device
 _CAMERA_EVIDENCE_KEYS = [
@@ -109,6 +117,9 @@ def analyze_ai_indicators(path: str, exif: dict, xmp: Optional[dict],
 
     blob = _collect_text_blob(exif, xmp)
     matched_markers = [m for m in _AI_SOFTWARE_MARKERS if m in blob]
+    for word, context_hints in _AMBIGUOUS_MARKERS_NEED_CONTEXT.items():
+        if word in blob and any(hint in blob for hint in context_hints):
+            matched_markers.append(word)
     if matched_markers:
         score += 60
         signals.append(f"AI tool string(s) in metadata: {', '.join(sorted(set(matched_markers)))}")

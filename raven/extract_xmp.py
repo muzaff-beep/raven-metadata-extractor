@@ -1,94 +1,79 @@
-"""Extract XMP metadata embedded in image files, using proper XML parsing (not regex)."""
+"""Extract XMP metadata embedded in image files, using Pillow's built-in getxmp()."""
 from __future__ import annotations
-import re
-import xml.etree.ElementTree as ET
-from typing import Any, Optional
+from typing import Any
 
-_XMP_START = b"<x:xmpmeta"
-_XMP_END = b"</x:xmpmeta>"
-
-_NS = {
-    "dc": "http://purl.org/dc/elements/1.1/",
-    "xmp": "http://ns.adobe.com/xap/1.0/",
-    "photoshop": "http://ns.adobe.com/photoshop/1.0/",
-    "exif": "http://ns.adobe.com/exif/1.0/",
-    "tiff": "http://ns.adobe.com/tiff/1.0/",
-    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-    "crs": "http://ns.adobe.com/camera-raw-settings/1.0/",
-}
+from PIL import Image
 
 
-def _find_xmp_block(raw_bytes: bytes) -> Optional[bytes]:
-    start = raw_bytes.find(_XMP_START)
-    if start == -1:
-        return None
-    end = raw_bytes.find(_XMP_END, start)
-    if end == -1:
-        return None
-    return raw_bytes[start:end + len(_XMP_END)]
-
-
-def _local_tag(tag: str) -> str:
-    """Strip XML namespace braces: '{ns}TagName' -> 'TagName'."""
-    return tag.split("}", 1)[-1] if "}" in tag else tag
-
-
-def _extract_text_or_list(elem: ET.Element) -> Any:
+def _flatten_xmp(node: Any, out: dict) -> None:
     """
-    Handles plain text values and RDF Bag/Seq/Alt lists (used for keywords,
-    creator lists, subject lists, etc).
+    Recursively flatten the nested dict returned by Image.getxmp() into a flat
+    {field_name: value} dict, matching the shape the rest of raven expects.
+
+    getxmp() shape (Pillow >= 8.3): nested dict keyed by local tag names, with
+    RDF Bag/Seq/Alt containers appearing as {"Bag": {"li": [...]}} etc, and
+    "xmpmeta" / "RDF" / "Description" as pure structural wrappers.
     """
-    bag = elem.find("rdf:Bag", _NS) or elem.find("rdf:Seq", _NS) or elem.find("rdf:Alt", _NS)
-    if bag is not None:
-        items = [li.text.strip() for li in bag.findall("rdf:li", _NS) if li.text]
-        return items
-    if elem.text and elem.text.strip():
-        return elem.text.strip()
-    return None
+    STRUCTURAL = {"xmpmeta", "RDF", "Description"}
+    CONTAINER_KEYS = {"Bag", "Seq", "Alt"}
+
+    if not isinstance(node, dict):
+        return
+
+    for key, value in node.items():
+        if key in STRUCTURAL:
+            _flatten_xmp(value, out)
+            continue
+
+        if isinstance(value, dict):
+            # RDF container (Bag/Seq/Alt) holding a list under "li"
+            container_key = next((k for k in CONTAINER_KEYS if k in value), None)
+            if container_key is not None:
+                li = value[container_key].get("li") if isinstance(value[container_key], dict) else None
+                if li is None:
+                    out[key] = value
+                elif isinstance(li, list):
+                    out[key] = [str(x) for x in li]
+                else:
+                    out[key] = [str(li)]
+                continue
+            # Description can nest directly under an arbitrary field too
+            if "Description" in value:
+                _flatten_xmp(value, out)
+                continue
+            # Otherwise it's a genuine nested struct we don't recognize; keep as-is
+            if key not in out:
+                out[key] = value
+            continue
+
+        if isinstance(value, list):
+            out[key] = [str(x) for x in value]
+            continue
+
+        # Plain scalar value
+        out[key] = value
 
 
 def extract_xmp(path: str) -> dict:
     """
     Returns:
         {"xmp": {field: value, ...}, "present": bool, "error": str | None}
+
+    Uses PIL.Image.Image.getxmp(), which:
+      - works for JPEG, PNG, and TIFF (unlike a manual "<x:xmpmeta" byte search)
+      - parses XML via defusedxml internally (safer than raw ElementTree)
+      - returns {} (not None) when no XMP block exists
     """
     result = {"xmp": {}, "present": False, "error": None}
     try:
-        with open(path, "rb") as f:
-            raw = f.read()
-        block = _find_xmp_block(raw)
-        if block is None:
+        with Image.open(path) as img:
+            raw = img.getxmp()
+        if not raw:
             return result
         result["present"] = True
-
-        try:
-            text = block.decode("utf-8", errors="replace")
-        except Exception:
-            text = block.decode("latin-1", errors="replace")
-
-        root = ET.fromstring(text)
         fields: dict = {}
-
-        # Walk every Description element's attributes (simple key="value" XMP fields)
-        for desc in root.iter():
-            if _local_tag(desc.tag) == "Description":
-                for attr, val in desc.attrib.items():
-                    fields[_local_tag(attr)] = val
-
-        # Walk child elements for structured / list values (dc:subject, dc:creator, etc)
-        for elem in root.iter():
-            local = _local_tag(elem.tag)
-            if local in ("RDF", "Description", "xmpmeta"):
-                continue
-            if local in fields:
-                continue
-            value = _extract_text_or_list(elem)
-            if value:
-                fields[local] = value
-
+        _flatten_xmp(raw, fields)
         result["xmp"] = fields
-    except ET.ParseError as e:
-        result["error"] = f"XMP XML parse error: {e}"
     except Exception as e:
         result["error"] = f"{type(e).__name__}: {e}"
     return result

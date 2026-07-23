@@ -39,6 +39,11 @@ def collect_file_info(path: str) -> dict:
         "mime_type": mime or "application/octet-stream",
         "extension": os.path.splitext(path)[1].lower().lstrip("."),
         "modified_at": _iso(stat.st_mtime),
-        "created_at": _iso(stat.st_ctime),
+        # st_ctime is inode/metadata-change time on Linux, not creation time;
+        # st_birthtime (true creation time) only exists on macOS/BSD, so fall
+        # back to ctime there and label it accurately everywhere.
+        "created_at": _iso(getattr(stat, "st_birthtime", stat.st_ctime)),
+        "created_at_is_true_birthtime": hasattr(stat, "st_birthtime"),
+        "metadata_changed_at": _iso(stat.st_ctime),
         "sha256": _sha256(path),
     }

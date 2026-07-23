@@ -10,8 +10,9 @@ Tabs:
 from __future__ import annotations
 import json
 import os
+import subprocess
+import sys
 import threading
-import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -27,9 +28,34 @@ TEXT = "#e6e6e6"
 SUBTLE = "#9aa4ad"
 
 
+def _pick_font(*candidates: str) -> str:
+    """Return the first font family from candidates that's actually installed;
+    falls back to a generic Tk family name if none match."""
+    try:
+        import tkinter.font as tkfont
+        available = set(tkfont.families())
+    except Exception:
+        return candidates[-1]
+    for name in candidates:
+        if name in available:
+            return name
+    return candidates[-1]
+
+
+# Resolved lazily inside RavenApp.__init__ (after a Tk root exists) since
+# tkinter.font.families() requires a live root window to query the OS.
+UI_FONT = "TkDefaultFont"
+MONO_FONT = "TkFixedFont"
+
+
 class RavenApp(tk.Tk):
     def __init__(self):
         super().__init__()
+        global UI_FONT, MONO_FONT
+        UI_FONT = _pick_font("Segoe UI", "SF Pro Text", "Helvetica Neue", "Ubuntu",
+                             "DejaVu Sans", "Helvetica", "TkDefaultFont")
+        MONO_FONT = _pick_font("Consolas", "SF Mono", "Menlo", "Ubuntu Mono",
+                               "DejaVu Sans Mono", "Courier New", "TkFixedFont")
         self.title("Raven Metadata Extractor")
         self.geometry("980x680")
         self.configure(bg=BG)
@@ -58,23 +84,23 @@ class RavenApp(tk.Tk):
             pass
         style.configure("TNotebook", background=BG, borderwidth=0)
         style.configure("TNotebook.Tab", background=PANEL, foreground=TEXT,
-                        padding=(18, 8), font=("Segoe UI", 10, "bold"))
+                        padding=(18, 8), font=(UI_FONT, 10, "bold"))
         style.map("TNotebook.Tab", background=[("selected", ACCENT)],
                   foreground=[("selected", "white")])
         style.configure("TFrame", background=BG)
         style.configure("Panel.TFrame", background=PANEL)
-        style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
-        style.configure("Head.TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 15, "bold"))
-        style.configure("Sub.TLabel", background=BG, foreground=SUBTLE, font=("Segoe UI", 9))
-        style.configure("Card.TLabel", background=PANEL, foreground=TEXT, font=("Segoe UI", 10))
-        style.configure("CardBig.TLabel", background=PANEL, foreground="white", font=("Segoe UI", 20, "bold"))
-        style.configure("CardLbl.TLabel", background=PANEL, foreground=SUBTLE, font=("Segoe UI", 9))
+        style.configure("TLabel", background=BG, foreground=TEXT, font=(UI_FONT, 10))
+        style.configure("Head.TLabel", background=BG, foreground=TEXT, font=(UI_FONT, 15, "bold"))
+        style.configure("Sub.TLabel", background=BG, foreground=SUBTLE, font=(UI_FONT, 9))
+        style.configure("Card.TLabel", background=PANEL, foreground=TEXT, font=(UI_FONT, 10))
+        style.configure("CardBig.TLabel", background=PANEL, foreground="white", font=(UI_FONT, 20, "bold"))
+        style.configure("CardLbl.TLabel", background=PANEL, foreground=SUBTLE, font=(UI_FONT, 9))
         style.configure("Treeview", background=PANEL, fieldbackground=PANEL, foreground=TEXT,
-                        rowheight=26, font=("Segoe UI", 9))
-        style.configure("Treeview.Heading", background=BG, foreground=TEXT, font=("Segoe UI", 9, "bold"))
+                        rowheight=26, font=(UI_FONT, 9))
+        style.configure("Treeview.Heading", background=BG, foreground=TEXT, font=(UI_FONT, 9, "bold"))
         style.map("Treeview", background=[("selected", ACCENT)])
         style.configure("Green.TButton", background=ACCENT, foreground="white",
-                        font=("Segoe UI", 11, "bold"), padding=8)
+                        font=(UI_FONT, 11, "bold"), padding=8)
         style.map("Green.TButton", background=[("active", "#256628")])
         style.configure("TButton", padding=6)
 
@@ -99,7 +125,7 @@ class ScanTab(ttk.Frame):
 
         row = ttk.Frame(self)
         row.pack(fill="x", padx=20, pady=6)
-        entry = tk.Entry(row, textvariable=self.folder, font=("Segoe UI", 10),
+        entry = tk.Entry(row, textvariable=self.folder, font=(UI_FONT, 10),
                          bg=PANEL, fg=TEXT, insertbackground=TEXT, relief="flat")
         entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
         ttk.Button(row, text="Browse…", command=self.browse).pack(side="left")
@@ -223,8 +249,10 @@ class HistoryTab(ttk.Frame):
         try:
             if os.name == "nt":
                 os.startfile(path)  # noqa
-            else:
-                webbrowser.open(f"file://{path}")
+            elif sys.platform == "darwin":
+                subprocess.run(["open", path], check=True)
+            else:  # Linux and other POSIX
+                subprocess.run(["xdg-open", path], check=True)
         except Exception:
             messagebox.showinfo("Reports folder", path)
 
@@ -252,6 +280,10 @@ class ReaderTab(ttk.Frame):
         self.cards = ttk.Frame(self)
         self.cards.pack(fill="x", padx=16, pady=6)
 
+        # one-line summary strip (top camera / date range / gps clusters / anomalies)
+        self.summary_line = ttk.Label(self, text="", style="Sub.TLabel")
+        self.summary_line.pack(anchor="w", padx=20, pady=(2, 0))
+
         # search
         self.search_row = ttk.Frame(self)
         self.search_var = tk.StringVar()
@@ -278,7 +310,7 @@ class ReaderTab(ttk.Frame):
         right.pack(side="right", fill="both")
         right.pack_propagate(False)
         self.detail = tk.Text(right, wrap="word", bg=PANEL, fg=TEXT, relief="flat",
-                              font=("Consolas", 9), padx=10, pady=10)
+                              font=(MONO_FONT, 9), padx=10, pady=10)
         self.detail.pack(fill="both", expand=True)
         self.detail.insert("1.0", "Select an image to see full metadata.")
         self.detail.config(state="disabled")
@@ -314,12 +346,14 @@ class ReaderTab(ttk.Frame):
             w.destroy()
         if summary:
             self._render_cards(summary)
+        else:
+            self.summary_line.config(text="")
 
         if not self.search_row.winfo_ismapped():
             self.search_row.pack(fill="x", padx=20, pady=(10, 4))
             ttk.Label(self.search_row, text="Filter:").pack(side="left")
             ent = tk.Entry(self.search_row, textvariable=self.search_var, bg=PANEL, fg=TEXT,
-                           insertbackground=TEXT, relief="flat", font=("Segoe UI", 10))
+                           insertbackground=TEXT, relief="flat", font=(UI_FONT, 10))
             ent.pack(side="left", fill="x", expand=True, ipady=4, padx=8)
         self.split.pack(fill="both", expand=True, padx=20, pady=(4, 16))
 
@@ -359,8 +393,7 @@ class ReaderTab(ttk.Frame):
         noexif = len(anomalies.get("images_without_any_exif", []))
         if noexif:
             line.append(f"{noexif} without any EXIF")
-        if line:
-            ttk.Label(self, text="   •   ".join(line), style="Sub.TLabel").pack(anchor="w", padx=20, pady=(2, 0))
+        self.summary_line.config(text="   •   ".join(line) if line else "")
 
     def _populate_table(self):
         for i in self.tree.get_children():
