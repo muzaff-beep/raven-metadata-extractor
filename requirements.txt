@@ -1,3 +1,7 @@
 Pillow>=10.0.0
 exifread>=3.0.0
 numpy>=1.24.0
+
+# Optional extras for stronger AI-detection signals (see requirements-optional.txt):
+#   c2pa-python   -> real C2PA / Content Credentials manifest parsing
+#   onnxruntime   -> local ML classifier signal (face-deepfake scope, see raven/ml_classifier.py)

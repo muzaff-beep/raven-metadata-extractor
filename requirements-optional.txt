@@ -1,0 +1,16 @@
+# Optional extras for raven's AI-generation indicators.
+# The app works fully without these; each signal degrades gracefully to
+# "unavailable" and is simply omitted from the score/report if not installed.
+#
+#   pip install -r requirements-optional.txt
+
+# Real C2PA / Content Credentials manifest parsing (reads digitalSourceType,
+# claim_generator, softwareAgent from cryptographically-signed manifests).
+# Rust-backed platform wheel: Windows, macOS, Linux.
+c2pa-python>=0.5.0
+
+# Local ONNX classifier runtime for the optional ML signal in
+# raven/ml_classifier.py. You must also supply a model file — see that
+# module's docstring for scope/accuracy caveats and where to point it
+# (RAVEN_AI_CLASSIFIER_MODEL env var, or raven/models/ai_image_classifier.onnx).
+onnxruntime>=1.18.0

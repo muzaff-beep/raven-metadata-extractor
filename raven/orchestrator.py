@@ -91,10 +91,24 @@ def find_images(folder: str, recursive: bool = False) -> Iterable[str]:
                     yield full
 
 
-def process_folder(folder: str, recursive: bool = False) -> list[dict]:
+def process_folder(folder: str, recursive: bool = False, on_progress=None) -> list[dict]:
+    """
+    on_progress(index, total, path, record) is called after each image is
+    processed, if provided -- lets the GUI show a live scrolling log and
+    accurate progress/pagination without changing the return value or
+    blocking behavior for existing callers that don't pass it.
+    """
     if not os.path.isdir(folder):
         raise NotADirectoryError(f"Not a folder: {folder}")
+    paths = list(find_images(folder, recursive=recursive))
+    total = len(paths)
     results = []
-    for path in find_images(folder, recursive=recursive):
-        results.append(process_image(path))
+    for i, path in enumerate(paths, start=1):
+        record = process_image(path)
+        results.append(record)
+        if on_progress:
+            try:
+                on_progress(i, total, path, record)
+            except Exception:
+                pass  # never let a logging/UI callback break the scan
     return results
