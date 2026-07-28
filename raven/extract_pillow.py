@@ -8,6 +8,24 @@ from PIL.ExifTags import TAGS, GPSTAGS
 from .tag_decoder import TagDecoder
 from .gps import build_gps_block
 
+# Cache tag lookups to avoid repeated dictionary access
+_TAG_CACHE: dict[int, str] = {}
+_GPS_TAG_CACHE: dict[int, str] = {}
+
+
+def _get_tag_name(tag_id: int) -> str:
+    """Get tag name with caching to speed up repeated lookups."""
+    if tag_id not in _TAG_CACHE:
+        _TAG_CACHE[tag_id] = TAGS.get(tag_id, f"Tag_0x{tag_id:04X}")
+    return _TAG_CACHE[tag_id]
+
+
+def _get_gps_tag_name(tag_id: int) -> str:
+    """Get GPS tag name with caching to speed up repeated lookups."""
+    if tag_id not in _GPS_TAG_CACHE:
+        _GPS_TAG_CACHE[tag_id] = GPSTAGS.get(tag_id, f"GPSTag_0x{tag_id:04X}")
+    return _GPS_TAG_CACHE[tag_id]
+
 
 def _clean_value(v: Any) -> Any:
     """Convert non-JSON-serializable EXIF value types into plain python types."""
@@ -54,7 +72,7 @@ def extract_pillow(path: str) -> dict:
 
             flat_raw = {}
             for tag_id, value in exif.items():
-                name = TAGS.get(tag_id, f"Tag_0x{tag_id:04X}")
+                name = _get_tag_name(tag_id)
                 flat_raw[name] = _clean_value(value)
 
             # Sub-IFDs (Exif, GPS) — Pillow exposes them via get_ifd
@@ -62,14 +80,14 @@ def extract_pillow(path: str) -> dict:
             try:
                 exif_ifd = exif.get_ifd(ExifTags.IFD.Exif)
                 for tag_id, value in exif_ifd.items():
-                    name = TAGS.get(tag_id, f"Tag_0x{tag_id:04X}")
+                    name = _get_tag_name(tag_id)
                     flat_raw[name] = _clean_value(value)
             except Exception:
                 pass
             try:
                 gps_ifd = exif.get_ifd(ExifTags.IFD.GPSInfo)
                 for tag_id, value in gps_ifd.items():
-                    name = GPSTAGS.get(tag_id, f"GPSTag_0x{tag_id:04X}")
+                    name = _get_gps_tag_name(tag_id)
                     gps_ifd_raw[name] = _clean_value(value)
             except Exception:
                 pass
