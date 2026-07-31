@@ -1,8 +1,7 @@
 """Walk a folder of images and produce one merged metadata record per file."""
 from __future__ import annotations
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Iterable, Optional, Callable
+from typing import Any, Iterable
 
 from .file_info import collect_file_info
 from .extract_pillow import extract_pillow
@@ -13,9 +12,6 @@ from .ai_detect import analyze_ai_indicators
 SUPPORTED_EXTENSIONS = {
     "jpg", "jpeg", "png", "tiff", "tif", "webp", "heic", "heif", "bmp", "gif"
 }
-
-# Default number of worker threads for parallel processing
-DEFAULT_WORKERS = min(8, (os.cpu_count() or 4) + 1)
 
 
 def _merge_exif(pillow_exif: dict, exifread_tags: dict) -> dict:
@@ -95,70 +91,24 @@ def find_images(folder: str, recursive: bool = False) -> Iterable[str]:
                     yield full
 
 
-def process_folder(
-    folder: str,
-    recursive: bool = False,
-    on_progress: Optional[Callable[[int, int, str, dict], None]] = None,
-    max_workers: int = DEFAULT_WORKERS,
-) -> list[dict]:
+def process_folder(folder: str, recursive: bool = False, on_progress=None) -> list[dict]:
     """
-    Process all images in a folder, optionally in parallel.
-
-    Args:
-        folder: Path to the folder containing images.
-        recursive: If True, scan subfolders recursively.
-        on_progress: Callback called after each image is processed:
-                     on_progress(index, total, path, record). Lets the GUI
-                     show a live scrolling log and accurate progress/pagination.
-        max_workers: Number of worker threads for parallel processing.
-                     Use 1 for sequential processing (default: CPU-based heuristic).
-
-    Returns:
-        List of metadata records, one per image, in the order they were found.
-
-    Note:
-        Parallel processing speeds up I/O-bound operations (reading files,
-        parsing metadata) but may affect the order of progress callbacks.
-        Results are always returned in the original file order.
+    on_progress(index, total, path, record) is called after each image is
+    processed, if provided -- lets the GUI show a live scrolling log and
+    accurate progress/pagination without changing the return value or
+    blocking behavior for existing callers that don't pass it.
     """
     if not os.path.isdir(folder):
         raise NotADirectoryError(f"Not a folder: {folder}")
     paths = list(find_images(folder, recursive=recursive))
     total = len(paths)
-    results: list[Optional[dict]] = [None] * total
-
-    if max_workers <= 1:
-        # Sequential processing - preserves original behavior exactly
-        for i, path in enumerate(paths):
-            record = process_image(path)
-            results[i] = record
-            if on_progress:
-                try:
-                    on_progress(i + 1, total, path, record)
-                except Exception:
-                    pass  # never let a logging/UI callback break the scan
-        return results  # type: ignore
-
-    # Parallel processing with ThreadPoolExecutor
-    def _process_with_index(idx_path: tuple[int, str]) -> tuple[int, dict]:
-        idx, path = idx_path
+    results = []
+    for i, path in enumerate(paths, start=1):
         record = process_image(path)
-        return idx, record
-
-    indexed_paths = list(enumerate(paths))
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_process_with_index, item): item[0] for item in indexed_paths}
-        completed = 0
-        for future in as_completed(futures):
-            idx, record = future.result()
-            results[idx] = record
-            completed += 1
-            if on_progress:
-                try:
-                    # Report in completion order, but include correct index
-                    on_progress(completed, total, paths[idx], record)
-                except Exception:
-                    pass  # never let a logging/UI callback break the scan
-
-    return [r for r in results if r is not None]  # type: ignore
+        results.append(record)
+        if on_progress:
+            try:
+                on_progress(i, total, path, record)
+            except Exception:
+                pass  # never let a logging/UI callback break the scan
+    return results

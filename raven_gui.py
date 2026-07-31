@@ -22,10 +22,11 @@ from raven import (
     load_history, load_report, get_reports_dir,
 )
 from raven_widgets import (
-    BG, PANEL, PANEL2, BORDER, TEXT, SUBTLE, ACCENT,
-    VERDICT_COLORS, VERDICT_LABELS,
-    DashboardCard, Pill,
+    BG, PANEL, PANEL2, PANEL_HOVER, BORDER, TEXT, SUBTLE, ACCENT, ACCENT_HOVER,
+    VERDICT_LABELS, RADIUS, RADIUS_BTN,
+    DashboardCard, RoundedButton, RoundedFrame,
 )
+from raven_icons import make_icon_canvas
 
 PAGE_SIZE = 10
 
@@ -36,6 +37,20 @@ PAGE_SIZE = 10
 # plain text banner is shown instead, so nothing breaks either way.
 HEADER_IMAGE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "header.png")
 HEADER_HEIGHT = 64
+
+# Window/taskbar icon shown in the title bar, Alt-Tab switcher, and taskbar.
+# - Windows: prefers app_icon.ico (multi-resolution .ico is what Windows
+#   actually wants for crisp taskbar/title-bar rendering); falls back to
+#   app_icon.png via iconphoto if only a PNG is provided.
+# - macOS/Linux: uses app_icon.png via iconphoto (Tk has no .icns support here;
+#   for a proper Dock icon on macOS, also set it in the PyInstaller .spec via
+#   the `icon=` argument pointing at an .icns file -- see build notes in
+#   requirements-optional.txt / README).
+# If none of these files exist, the app just uses Tk's default feather icon --
+# nothing breaks either way.
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+APP_ICON_ICO_PATH = os.path.join(ASSETS_DIR, "app_icon.ico")
+APP_ICON_PNG_PATH = os.path.join(ASSETS_DIR, "app_icon.png")
 
 
 def _pick_font(*candidates: str) -> str:
@@ -71,6 +86,7 @@ class RavenApp(tk.Tk):
         self.configure(bg=BG)
         self.minsize(1040, 680)
 
+        self._set_app_icon()
         self._init_style()
         self._build_header()
 
@@ -84,6 +100,31 @@ class RavenApp(tk.Tk):
         self.notebook.add(self.history_tab, text="  History  ")
 
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_change)
+
+    def _set_app_icon(self):
+        """
+        Sets the window/taskbar icon. Tries the platform-preferred format
+        first, falls back to PNG via iconphoto, and silently does nothing if
+        neither file is present -- Tk's default icon is used instead, the app
+        never errors because an icon file hasn't been added yet.
+        """
+        self._app_icon_imgtk = None  # keep a reference so Tk doesn't GC it
+        if os.name == "nt" and os.path.isfile(APP_ICON_ICO_PATH):
+            try:
+                self.iconbitmap(APP_ICON_ICO_PATH)
+                return
+            except Exception:
+                pass  # fall through to PNG attempt below
+
+        if os.path.isfile(APP_ICON_PNG_PATH):
+            try:
+                from PIL import Image, ImageTk
+                with Image.open(APP_ICON_PNG_PATH) as im:
+                    im = im.convert("RGBA")
+                    self._app_icon_imgtk = ImageTk.PhotoImage(im)
+                self.iconphoto(True, self._app_icon_imgtk)
+            except Exception:
+                pass  # keep Tk's default icon rather than error out
 
     def _build_header(self):
         """
@@ -202,48 +243,58 @@ class ScanTab(ttk.Frame):
 
         tk.Label(parent, text="Folder:", bg=BG, fg=SUBTLE, font=(UI_FONT, 9),
                  anchor="w").pack(fill="x")
-        row = tk.Frame(parent, bg=BG)
-        row.pack(fill="x", pady=(2, 8))
+        row_wrap = RoundedFrame(parent, bg_color=PANEL, radius=RADIUS_BTN, border_color=BORDER, height=38)
+        row_wrap.pack(fill="x", pady=(2, 8))
+        row = row_wrap.body
         entry = tk.Entry(row, textvariable=self.folder, font=(UI_FONT, 9),
-                         bg=PANEL, fg=TEXT, insertbackground=TEXT, relief="flat")
-        entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 6))
-        tk.Button(row, text="Browse…", command=self.browse, bg=PANEL2, fg=TEXT,
-                 bd=0, padx=10, font=(UI_FONT, 9), cursor="hand2").pack(side="left")
+                         bg=PANEL, fg=TEXT, insertbackground=TEXT, relief="flat", bd=0)
+        entry.pack(side="left", fill="both", expand=True, ipady=8, padx=(10, 4), pady=2)
+        browse_btn = RoundedButton(row, "Browse", command=self.browse, ui_font=UI_FONT,
+                                   bg_color=PANEL2, hover_color=PANEL_HOVER, fg=TEXT,
+                                   size=9, padx=12, pady=6, icon="folder")
+        browse_btn.pack(side="right", padx=(0, 4), pady=4)
 
         ttk.Checkbutton(parent, text="Scan subfolders",
                         variable=self.recursive).pack(anchor="w", pady=(2, 12))
 
-        self.run_btn = tk.Button(parent, text="▶  Start Scan", command=self.run,
-                                 bg=ACCENT, fg="white", bd=0, font=(UI_FONT, 11, "bold"),
-                                 pady=10, cursor="hand2", activebackground="#256628")
+        self.run_btn = RoundedButton(parent, "Start Scan", command=self.run, ui_font=UI_FONT,
+                                     bg_color=ACCENT, hover_color=ACCENT_HOVER, fg="white",
+                                     size=11, padx=18, pady=11, icon="check")
         self.run_btn.pack(fill="x", pady=(0, 14))
 
         # ---- Status box -----------------------------------------------------
-        status_box = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        status_box = RoundedFrame(parent, bg_color=PANEL, radius=RADIUS, border_color=BORDER)
         status_box.pack(fill="x", pady=(0, 14))
-        tk.Label(status_box, text="Status", bg=PANEL, fg=TEXT, font=(UI_FONT, 10, "bold"),
-                 anchor="w").pack(fill="x", padx=12, pady=(10, 2))
+        sb = status_box.body
+        tk.Label(sb, text="Status", bg=PANEL, fg=TEXT, font=(UI_FONT, 10, "bold"),
+                 anchor="w").pack(fill="x", padx=14, pady=(12, 2))
         self.status_var = tk.StringVar(value="Idle")
-        tk.Label(status_box, textvariable=self.status_var, bg=PANEL, fg=ACCENT,
-                 font=(UI_FONT, 10, "bold"), anchor="w").pack(fill="x", padx=12, pady=(0, 8))
-        tk.Label(status_box, text="Reports are saved to:", bg=PANEL, fg=SUBTLE,
-                 font=(UI_FONT, 8), anchor="w").pack(fill="x", padx=12)
-        path_row = tk.Frame(status_box, bg=PANEL)
-        path_row.pack(fill="x", padx=12, pady=(0, 10))
-        tk.Label(path_row, text=str(get_reports_dir()), bg=PANEL, fg="#4a90c2",
-                 font=(UI_FONT, 8, "underline"), anchor="w", wraplength=260,
+        tk.Label(sb, textvariable=self.status_var, bg=PANEL, fg=ACCENT,
+                 font=(UI_FONT, 10, "bold"), anchor="w").pack(fill="x", padx=14, pady=(0, 8))
+        tk.Label(sb, text="Reports are saved to:", bg=PANEL, fg=SUBTLE,
+                 font=(UI_FONT, 8), anchor="w").pack(fill="x", padx=14)
+        path_row = tk.Frame(sb, bg=PANEL)
+        path_row.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Label(path_row, text=str(get_reports_dir()), bg=PANEL, fg="#4d9fd6",
+                 font=(UI_FONT, 8, "underline"), anchor="w", wraplength=250,
                  justify="left", cursor="hand2").pack(side="left", fill="x", expand=True)
-        tk.Button(path_row, text="📁", bg=PANEL, fg=SUBTLE, bd=0,
-                 command=self.open_reports_folder, cursor="hand2").pack(side="right")
+        folder_icon_btn = make_icon_canvas(path_row, "folder", 18, color=SUBTLE, bg=PANEL)
+        folder_icon_btn.pack(side="right")
+        folder_icon_btn.bind("<Button-1>", lambda e: self.open_reports_folder())
+        folder_icon_btn.config(cursor="hand2")
+
+        status_box.after_idle(lambda: status_box.configure(height=sb.winfo_reqheight() + 4))
 
         # ---- Live scan output -------------------------------------------------
         tk.Label(parent, text="Live Scan Output", bg=BG, fg=TEXT,
                  font=(UI_FONT, 10, "bold"), anchor="w").pack(fill="x", pady=(0, 4))
-        console_frame = tk.Frame(parent, bg="#15181b", highlightbackground=BORDER, highlightthickness=1)
-        console_frame.pack(fill="both", expand=True)
-        self.console = tk.Text(console_frame, bg="#15181b", fg="#8fd694", relief="flat",
+        console_wrap = RoundedFrame(parent, bg_color="#14171a", radius=RADIUS, border_color=BORDER)
+        console_wrap.pack(fill="both", expand=True)
+        console_frame = console_wrap.body
+        self.console = tk.Text(console_frame, bg="#14171a", fg="#8fd694", relief="flat",
                                font=(MONO_FONT, 8),
-                               padx=10, pady=8, wrap="word", state="disabled")
+                               padx=10, pady=8, wrap="word", state="disabled", bd=0,
+                               highlightthickness=0)
         console_sb = ttk.Scrollbar(console_frame, orient="vertical", command=self.console.yview)
         self.console.configure(yscrollcommand=console_sb.set)
         self.console.pack(side="left", fill="both", expand=True)
@@ -296,7 +347,8 @@ class ScanTab(ttk.Frame):
             messagebox.showwarning("No folder", "Please choose a valid folder first.")
             return
         self._scanning = True
-        self.run_btn.config(state="disabled", text="Scanning…")
+        self.run_btn.set_enabled(False)
+        self.run_btn.set_text("Scanning…")
         self.status_var.set("Processing…")
         self.footer_status.set("Scanning…")
         self._clear_log()
@@ -330,7 +382,8 @@ class ScanTab(ttk.Frame):
 
     def _done(self, entry, records, summary):
         self._scanning = False
-        self.run_btn.config(state="normal", text="▶  Start Scan")
+        self.run_btn.set_enabled(True)
+        self.run_btn.set_text("Start Scan")
         n = summary["totals"]["images_scanned"]
         self.records = records
         self.summary = summary
@@ -346,7 +399,8 @@ class ScanTab(ttk.Frame):
 
     def _error(self, msg):
         self._scanning = False
-        self.run_btn.config(state="normal", text="▶  Start Scan")
+        self.run_btn.set_enabled(True)
+        self.run_btn.set_text("Start Scan")
         self.status_var.set("Error")
         self.footer_status.set(f"Error: {msg}")
         self._log(f"ERROR: {msg}")
@@ -370,18 +424,22 @@ class ScanTab(ttk.Frame):
         filter_menu["menu"].config(bg=PANEL, fg=TEXT)
         filter_menu.pack(side="left", padx=(0, 8), ipady=3)
 
-        search_frame = tk.Frame(toolbar, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        search_frame = RoundedFrame(toolbar, bg_color=PANEL, radius=RADIUS_BTN, border_color=BORDER, height=34)
         search_frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        tk.Label(search_frame, text="🔍", bg=PANEL, fg=SUBTLE).pack(side="left", padx=(8, 4))
-        search_entry = tk.Entry(search_frame, textvariable=self.search_var, bg=PANEL, fg=TEXT,
-                               insertbackground=TEXT, relief="flat", font=(UI_FONT, 9))
-        search_entry.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 8))
+        sf = search_frame.body
+        search_icon = make_icon_canvas(sf, "search", 15, color=SUBTLE, bg=PANEL)
+        search_icon.pack(side="left", padx=(10, 4))
+        search_entry = tk.Entry(sf, textvariable=self.search_var, bg=PANEL, fg=TEXT,
+                               insertbackground=TEXT, relief="flat", font=(UI_FONT, 9), bd=0)
+        search_entry.pack(side="left", fill="both", expand=True, ipady=6, padx=(0, 10), pady=2)
 
-        tk.Button(toolbar, text="Export Report ▾", command=self._export_report_menu,
-                 bg=PANEL2, fg=TEXT, bd=0, padx=12, font=(UI_FONT, 9),
-                 cursor="hand2").pack(side="left", padx=(0, 6))
-        tk.Button(toolbar, text="⟳", command=self._refresh_current, bg=PANEL2, fg=TEXT,
-                 bd=0, padx=10, font=(UI_FONT, 10), cursor="hand2").pack(side="left")
+        RoundedButton(toolbar, "Export Report", command=self._export_report_menu, ui_font=UI_FONT,
+                     bg_color=PANEL2, hover_color=PANEL_HOVER, fg=TEXT, size=9,
+                     padx=12, pady=7, icon="download").pack(side="left", padx=(0, 6))
+        refresh_btn = RoundedButton(toolbar, "", command=self._refresh_current, ui_font=UI_FONT,
+                                    bg_color=PANEL2, hover_color=PANEL_HOVER, fg=TEXT, size=9,
+                                    padx=8, pady=7, icon="refresh")
+        refresh_btn.pack(side="left")
 
         # ---- table -----------------------------------------------------------
         table_frame = tk.Frame(parent, bg=BG)
@@ -426,11 +484,11 @@ class ScanTab(ttk.Frame):
                          if ((r.get("metadata") or {}).get("ai_indicators") or {}).get("c2pa", {}).get("present"))
 
         cards = [
-            ("🖼", "#1565c0", str(t.get("images_scanned", 0)), "Images", "Total analyzed"),
-            ("📍", "#2e7d32", str(t.get("with_gps", 0)), "GPS", "With location"),
-            ("🧠", "#c0392b", str(ai.get("likely_ai_count", 0) + ai.get("possibly_ai_count", 0)), "AI Flags", "Potentially AI"),
-            ("📷", "#6a1b9a", str(t.get("unique_cameras", 0)), "Cameras", "Unique models"),
-            ("🔏", "#1565c0", str(c2pa_count), "C2PA", "With credentials"),
+            ("image", "#1565c0", str(t.get("images_scanned", 0)), "Images", "Total analyzed"),
+            ("pin", "#2e7d32", str(t.get("with_gps", 0)), "GPS", "With location"),
+            ("brain", "#c0392b", str(ai.get("likely_ai_count", 0) + ai.get("possibly_ai_count", 0)), "AI Flags", "Potentially AI"),
+            ("camera", "#6a1b9a", str(t.get("unique_cameras", 0)), "Cameras", "Unique models"),
+            ("shield", "#1565c0", str(c2pa_count), "C2PA", "With credentials"),
         ]
         for icon, color, value, label, sub in cards:
             card = DashboardCard(self.dashboard_row, icon, color, value, label, UI_FONT, sub=sub)
@@ -513,7 +571,7 @@ class ScanTab(ttk.Frame):
             verdict = ai.get("verdict", "inconclusive")
             verdict_label = VERDICT_LABELS.get(verdict, verdict)
             c2pa_ok = "✓" if (ai.get("c2pa") or {}).get("present") else ""
-            self.tree.insert("", "end", values=("🖼", fname, cam, res, dt, verdict_label, gps_ok, c2pa_ok),
+            self.tree.insert("", "end", values=("", fname, cam, res, dt, verdict_label, gps_ok, c2pa_ok),
                             tags=(verdict,))
 
         n = len(self.filtered)
@@ -529,11 +587,14 @@ class ScanTab(ttk.Frame):
             w.destroy()
 
         def make_btn(text, page, enabled=True, active=False):
-            b = tk.Button(self.pager_btns_frame, text=text, bg=(ACCENT if active else PANEL2),
-                         fg=TEXT if not active else "white", bd=0, padx=8, pady=2,
-                         font=(UI_FONT, 9), cursor="hand2" if enabled else "arrow",
-                         state="normal" if enabled else "disabled",
-                         command=(lambda p=page: self._goto_page(p)) if enabled else None)
+            b = RoundedButton(self.pager_btns_frame, text,
+                             command=(lambda p=page: self._goto_page(p)) if enabled else None,
+                             ui_font=UI_FONT, bg_color=(ACCENT if active else PANEL2),
+                             hover_color=(ACCENT_HOVER if active else PANEL_HOVER),
+                             fg=("white" if active else TEXT), size=9, padx=10, pady=5,
+                             bold=active, radius=7)
+            if not enabled:
+                b.set_enabled(False)
             b.pack(side="left", padx=2)
             return b
 
@@ -600,8 +661,12 @@ class HistoryTab(ttk.Frame):
         header = ttk.Frame(self)
         header.pack(fill="x", padx=20, pady=(20, 8))
         ttk.Label(header, text="Report History", style="Head.TLabel").pack(side="left")
-        ttk.Button(header, text="Refresh", command=self.refresh).pack(side="right")
-        ttk.Button(header, text="Open Reports Folder", command=self.open_folder).pack(side="right", padx=6)
+        RoundedButton(header, "Open Reports Folder", command=self.open_folder, ui_font=UI_FONT,
+                     bg_color=PANEL2, hover_color=PANEL_HOVER, fg=TEXT, size=9,
+                     padx=12, pady=7, icon="folder").pack(side="right", padx=(6, 0))
+        RoundedButton(header, "Refresh", command=self.refresh, ui_font=UI_FONT,
+                     bg_color=PANEL2, hover_color=PANEL_HOVER, fg=TEXT, size=9,
+                     padx=12, pady=7, icon="refresh").pack(side="right")
 
         cols = ("name", "source", "location", "timestamp", "count")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="browse")

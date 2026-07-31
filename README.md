@@ -145,6 +145,11 @@ pyinstaller --onefile --console --name raven-cli --collect-all PIL --collect-all
 jpg, jpeg, png, tiff, tif, webp, heic, heif, bmp, gif
 
 ## Platform notes
+- **Visual design**: cards, pills, and buttons use true rounded corners drawn
+  on Canvas (`raven_widgets.py`), not stock Tkinter's hard-edged Frame/Button.
+  Icons (`raven_icons.py`) are small vector line-icons drawn directly on
+  Canvas in a Lucide-style stroke aesthetic — no bundled image files, no icon
+  font, no extra dependency.
 - **Fonts**: the GUI auto-detects installed fonts per OS (Segoe UI / SF Pro /
   Ubuntu / DejaVu Sans, with generic Tk fallbacks) rather than hardcoding
   Windows-only font names.

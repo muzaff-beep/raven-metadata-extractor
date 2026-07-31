@@ -14,10 +14,11 @@ import tkinter as tk
 from tkinter import ttk
 
 from raven_widgets import (
-    BG, PANEL, PANEL2, BORDER, TEXT, SUBTLE, ACCENT,
-    VERDICT_COLORS, VERDICT_LABELS, TIER_COLORS,
-    Pill, TabbedPanel,
+    BG, PANEL, PANEL2, PANEL_HOVER, BORDER, TEXT, SUBTLE,
+    VERDICT_COLORS, TIER_COLORS, RADIUS,
+    Pill, TabbedPanel, RoundedButton, RoundedFrame,
 )
+from raven_icons import make_icon_canvas
 
 _geocode_cache: dict = {}
 
@@ -93,8 +94,10 @@ class DetailModal(tk.Toplevel):
         header.pack_propagate(False)
         tk.Label(header, text=f"{file_info.get('filename', 'Untitled')} — Details",
                  bg=PANEL, fg=TEXT, font=(self.ui_font, 11, "bold")).pack(side="left", padx=16)
-        tk.Button(header, text="✕", bg=PANEL, fg=SUBTLE, bd=0, activebackground=PANEL2,
-                  font=(self.ui_font, 11), command=self.destroy, cursor="hand2").pack(side="right", padx=12)
+        close_icon = make_icon_canvas(header, "close", 16, color=SUBTLE, bg=PANEL)
+        close_icon.pack(side="right", padx=16)
+        close_icon.bind("<Button-1>", lambda e: self.destroy())
+        close_icon.config(cursor="hand2")
 
         # scrollable body
         outer = tk.Frame(self, bg=BG)
@@ -119,11 +122,10 @@ class DetailModal(tk.Toplevel):
         top_row = tk.Frame(scroll_frame, bg=BG)
         top_row.pack(fill="x", padx=16, pady=(16, 8))
 
-        preview_frame = tk.Frame(top_row, bg=PANEL, width=230, height=230,
-                                 highlightbackground=BORDER, highlightthickness=1)
+        preview_frame = RoundedFrame(top_row, bg_color=PANEL, radius=RADIUS,
+                                     border_color=BORDER, width=230, height=230)
         preview_frame.pack(side="left", padx=(0, 16))
-        preview_frame.pack_propagate(False)
-        self._render_preview(preview_frame, file_info.get("path"))
+        self._render_preview(preview_frame.body, file_info.get("path"))
 
         pills_col = tk.Frame(top_row, bg=BG)
         pills_col.pack(side="left", fill="both", expand=True, anchor="n")
@@ -132,12 +134,12 @@ class DetailModal(tk.Toplevel):
         # ---- side-by-side info cards: GPS | AI Probability ------------------
         cards_row = tk.Frame(scroll_frame, bg=BG)
         cards_row.pack(fill="x", padx=16, pady=(4, 8))
-        gps_card = tk.Frame(cards_row, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        gps_card = RoundedFrame(cards_row, bg_color=PANEL, radius=RADIUS, border_color=BORDER)
         gps_card.pack(side="left", fill="both", expand=True, padx=(0, 6))
-        ai_card = tk.Frame(cards_row, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        ai_card = RoundedFrame(cards_row, bg_color=PANEL, radius=RADIUS, border_color=BORDER)
         ai_card.pack(side="left", fill="both", expand=True, padx=(6, 0))
-        self._render_gps_card(gps_card, gps)
-        self._render_ai_card(ai_card, ai)
+        self._render_gps_card(gps_card.body, gps)
+        self._render_ai_card(ai_card.body, ai)
 
         # ---- tabbed panel: EXIF / XMP / C2PA / Raw JSON ----------------------
         tabs_frame = tk.Frame(scroll_frame, bg=BG)
@@ -153,9 +155,9 @@ class DetailModal(tk.Toplevel):
 
         btn_row = tk.Frame(scroll_frame, bg=BG)
         btn_row.pack(fill="x", padx=16, pady=(0, 16))
-        tk.Button(btn_row, text="Close", command=self.destroy, bg=PANEL2, fg=TEXT,
-                 bd=0, padx=16, pady=6, font=(self.ui_font, 9, "bold"),
-                 cursor="hand2").pack(side="right")
+        RoundedButton(btn_row, "Close", command=self.destroy, ui_font=self.ui_font,
+                     bg_color=PANEL2, hover_color=PANEL_HOVER, fg=TEXT, size=9,
+                     padx=16, pady=8).pack(side="right")
 
     # ------------------------------------------------------------------ preview
     def _render_preview(self, frame, path):
@@ -207,8 +209,12 @@ class DetailModal(tk.Toplevel):
 
     # ------------------------------------------------------------------ GPS card
     def _render_gps_card(self, card, gps):
-        tk.Label(card, text="📍  GPS Information", bg=PANEL, fg=TEXT,
-                 font=(self.ui_font, 10, "bold"), anchor="w").pack(fill="x", padx=14, pady=(12, 8))
+        header_row = tk.Frame(card, bg=PANEL)
+        header_row.pack(fill="x", padx=14, pady=(12, 8))
+        icon_c = make_icon_canvas(header_row, "pin", 16, color=TEXT, bg=PANEL)
+        icon_c.pack(side="left", padx=(0, 6))
+        tk.Label(header_row, text="GPS Information", bg=PANEL, fg=TEXT,
+                 font=(self.ui_font, 10, "bold"), anchor="w").pack(side="left")
 
         dec = (gps or {}).get("decimal") or {}
         lat, lon, alt = dec.get("latitude"), dec.get("longitude"), dec.get("altitude_m")
@@ -263,8 +269,12 @@ class DetailModal(tk.Toplevel):
 
     # ------------------------------------------------------------------ AI card
     def _render_ai_card(self, card, ai):
-        tk.Label(card, text="🧠  AI Probability", bg=PANEL, fg=TEXT,
-                 font=(self.ui_font, 10, "bold"), anchor="w").pack(fill="x", padx=14, pady=(12, 8))
+        header_row = tk.Frame(card, bg=PANEL)
+        header_row.pack(fill="x", padx=14, pady=(12, 8))
+        icon_c = make_icon_canvas(header_row, "brain", 16, color=TEXT, bg=PANEL)
+        icon_c.pack(side="left", padx=(0, 6))
+        tk.Label(header_row, text="AI Probability", bg=PANEL, fg=TEXT,
+                 font=(self.ui_font, 10, "bold"), anchor="w").pack(side="left")
 
         if not ai:
             tk.Label(card, text="No AI analysis available.", bg=PANEL, fg=SUBTLE,

@@ -17,14 +17,17 @@ jobs:
             asset_name: RavenExtractor-windows
             gui_artifact: dist/RavenExtractor.exe
             cli_artifact: dist/raven-cli.exe
+            icon_path: assets/app_icon.ico
           - os: macos-latest
             asset_name: RavenExtractor-macos
             gui_artifact: dist/RavenExtractor.app
             cli_artifact: dist/raven-cli
+            icon_path: assets/app_icon.icns
           - os: ubuntu-latest
             asset_name: RavenExtractor-linux
             gui_artifact: dist/RavenExtractor
             cli_artifact: dist/raven-cli
+            icon_path: assets/app_icon.png
 
     runs-on: ${{ matrix.os }}
 
@@ -49,12 +52,24 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Resolve optional app icon flag
+        id: icon
+        shell: bash
+        run: |
+          if [ -f "${{ matrix.icon_path }}" ]; then
+            echo "flag=--icon=${{ matrix.icon_path }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build GUI binary
+        shell: bash
         run: >
           pyinstaller --onefile --windowed --name RavenExtractor
           --collect-all PIL
           --collect-all exifread
           --collect-all numpy
+          ${{ steps.icon.outputs.flag }}
           raven_gui.py
 
       - name: Build CLI binary
