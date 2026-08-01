@@ -217,7 +217,12 @@ def draw_icon(canvas: tk.Canvas, name: str, x, y, size, color="white", width=2.0
 
 def make_icon_canvas(parent, name: str, size: int, color="white", bg=None, width=2.0) -> tk.Canvas:
     """Convenience: a standalone Canvas widget sized exactly to the icon."""
-    c = tk.Canvas(parent, width=size, height=size, bg=bg or parent.cget("bg"),
+    if bg is None:
+        try:
+            bg = parent.cget("bg")
+        except (tk.TclError, AttributeError, TypeError):
+            bg = "#1a1f24"  # safe dark fallback; ttk parents have no "bg" option to read
+    c = tk.Canvas(parent, width=size, height=size, bg=bg,
                  highlightthickness=0, bd=0)
     draw_icon(c, name, 0, 0, size, color=color, width=width)
     return c

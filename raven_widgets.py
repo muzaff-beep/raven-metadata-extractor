@@ -48,6 +48,20 @@ RADIUS_BTN = 8
 SPACE = 4             # base spacing unit; use multiples of this (8, 12, 16, 20...)
 
 
+def _safe_parent_bg(parent, default=BG):
+    """
+    Reads a parent widget's background color safely across both plain tk
+    widgets (which use the "bg" option) and ttk themed widgets (which have
+    NO "bg" option at all -- cget("bg") raises tkinter.TclError: unknown
+    option "-bg" on a ttk.Frame/ttk.Label/etc). Falls back to `default` for
+    ttk parents, non-widget parents, or anything else that goes wrong.
+    """
+    try:
+        return parent.cget("bg")
+    except (tk.TclError, AttributeError, TypeError):
+        return default
+
+
 class RoundedFrame(tk.Canvas):
     """
     A Canvas that draws a rounded rectangle background and behaves like a
@@ -56,7 +70,7 @@ class RoundedFrame(tk.Canvas):
     """
     def __init__(self, parent, bg_color=PANEL, radius=RADIUS, border_color=None,
                  border_width=1, width=None, height=None):
-        parent_bg = parent.cget("bg") if hasattr(parent, "cget") else BG
+        parent_bg = _safe_parent_bg(parent)
         super().__init__(parent, bg=parent_bg, highlightthickness=0, bd=0,
                          width=width or 10, height=height or 10)
         self._bg_color = bg_color
@@ -156,7 +170,7 @@ class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command=None, ui_font="TkDefaultFont",
                  bg_color=ACCENT, hover_color=None, fg="white", size=10,
                  padx=16, pady=9, bold=True, radius=RADIUS_BTN, icon=None):
-        parent_bg = parent.cget("bg") if hasattr(parent, "cget") else BG
+        parent_bg = _safe_parent_bg(parent)
         super().__init__(parent, bg=parent_bg, highlightthickness=0, bd=0, cursor="hand2")
         self._command = command
         self._bg_color = bg_color
