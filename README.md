@@ -82,33 +82,40 @@ pip install -r requirements.txt
 pip install -r requirements-optional.txt
 ```
 
-## Run the GUI
+## Run it
 ```
-python raven_gui.py
+python raven_app.py                              # opens the GUI
+python raven_app.py /path/to/images              # CLI mode: scan once, print summary
+python raven_app.py /path/to/images --recursive
+python raven_app.py /path/to/images -o extra_copy.json
+python raven_app.py --gui                        # force GUI even with a flag present
 ```
-Pick a folder → Start Scan → results appear live in the dashboard/table on the
-right as each image is processed → double-click any row for full details.
+One entry point (`raven_app.py`) handles both: no arguments launches the GUI,
+any folder/flag argument runs CLI mode instead. Reports always save to
+`Documents/RavenReports/` regardless of which mode you use; CLI's `-o` writes
+an additional copy to an exact path you choose.
 
-## Run the CLI
-```
-python raven_cli.py /path/to/images
-python raven_cli.py /path/to/images --recursive
-python raven_cli.py /path/to/images -o extra_copy.json
-```
-Reports always save to `Documents/RavenReports/` regardless; `-o` writes an extra copy.
+GUI walkthrough: Pick a folder → Start Scan → results appear live in the
+dashboard/table on the right as each image is processed → double-click any
+row for full details.
 
 ## Building binaries
 Cross-platform builds run automatically via GitHub Actions
 (`.github/workflows/build.yml`) on push to `main`/`master`, on pull requests,
 and on `v*` tags (which also publishes a GitHub Release with every OS's
-binaries attached). Matrix covers Windows, macOS, and Linux, building both
-the GUI and CLI as standalone binaries.
+binaries attached). Matrix covers Windows, macOS, and Linux, producing a
+**single merged binary per OS** (GUI + CLI in one executable, same behavior
+as running `raven_app.py` directly) rather than separate GUI/CLI builds.
+
+Note: the merged binary is built with PyInstaller's `--console` flag, so a
+console window briefly flashes when launching the GUI on Windows — this
+tradeoff was chosen deliberately so CLI-mode output/errors are still visible
+when the same binary is invoked from a terminal with folder arguments.
 
 To build locally:
 ```
 pip install -r requirements.txt pyinstaller
-pyinstaller --onefile --windowed --name RavenExtractor --collect-all PIL --collect-all exifread --collect-all numpy raven_gui.py
-pyinstaller --onefile --console --name raven-cli --collect-all PIL --collect-all exifread --collect-all numpy raven_cli.py
+pyinstaller --onefile --console --name RavenExtractor --collect-all PIL --collect-all exifread --collect-all numpy raven_app.py
 ```
 
 ## Report structure
@@ -145,6 +152,12 @@ pyinstaller --onefile --console --name raven-cli --collect-all PIL --collect-all
 jpg, jpeg, png, tiff, tif, webp, heic, heif, bmp, gif
 
 ## Platform notes
+- **Title bar**: Windows gets a custom-drawn title bar (matching the app's
+  dark theme) with its own minimize/maximize/close buttons and drag-to-move.
+  macOS and Linux keep the native OS title bar unchanged — `overrideredirect`
+  has real quirks on those platforms (reduced native feel on macOS,
+  inconsistent behavior across Linux window managers), so the custom bar is
+  deliberately scoped to Windows only, where it's reliable.
 - **Visual design**: cards, pills, and buttons use true rounded corners drawn
   on Canvas (`raven_widgets.py`), not stock Tkinter's hard-edged Frame/Button.
   Icons (`raven_icons.py`) are small vector line-icons drawn directly on

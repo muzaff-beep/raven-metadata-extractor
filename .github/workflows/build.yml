@@ -15,18 +15,15 @@ jobs:
         include:
           - os: windows-latest
             asset_name: RavenExtractor-windows
-            gui_artifact: dist/RavenExtractor.exe
-            cli_artifact: dist/raven-cli.exe
+            artifact: dist/RavenExtractor.exe
             icon_path: assets/app_icon.ico
           - os: macos-latest
             asset_name: RavenExtractor-macos
-            gui_artifact: dist/RavenExtractor.app
-            cli_artifact: dist/raven-cli
+            artifact: dist/RavenExtractor
             icon_path: assets/app_icon.icns
           - os: ubuntu-latest
             asset_name: RavenExtractor-linux
-            gui_artifact: dist/RavenExtractor
-            cli_artifact: dist/raven-cli
+            artifact: dist/RavenExtractor
             icon_path: assets/app_icon.png
 
     runs-on: ${{ matrix.os }}
@@ -62,45 +59,31 @@ jobs:
             echo "flag=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build GUI binary
+      - name: Build merged GUI+CLI binary
         shell: bash
         run: >
-          pyinstaller --onefile --windowed --name RavenExtractor
+          pyinstaller --onefile --console --name RavenExtractor
           --collect-all PIL
           --collect-all exifread
           --collect-all numpy
           ${{ steps.icon.outputs.flag }}
-          raven_gui.py
+          raven_app.py
 
-      - name: Build CLI binary
-        run: >
-          pyinstaller --onefile --console --name raven-cli
-          --collect-all PIL
-          --collect-all exifread
-          --collect-all numpy
-          raven_cli.py
-
-      - name: Smoke test CLI binary (Linux/macOS)
+      - name: Smoke test CLI mode (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
-          ./dist/raven-cli --help
+          ./dist/RavenExtractor --help
 
-      - name: Smoke test CLI binary (Windows)
+      - name: Smoke test CLI mode (Windows)
         if: runner.os == 'Windows'
         run: |
-          dist\raven-cli.exe --help
+          dist\RavenExtractor.exe --help
 
-      - name: Upload GUI artifact
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}-gui
-          path: ${{ matrix.gui_artifact }}
-
-      - name: Upload CLI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_name }}-cli
-          path: ${{ matrix.cli_artifact }}
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.artifact }}
 
   release:
     needs: build

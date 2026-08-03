@@ -87,6 +87,9 @@ class RavenApp(tk.Tk):
         self.minsize(1040, 680)
 
         self._set_app_icon()
+        from raven_titlebar import attach_custom_title_bar
+        attach_custom_title_bar(self, "Raven Metadata Extractor")
+
         self._init_style()
         self._build_header()
 

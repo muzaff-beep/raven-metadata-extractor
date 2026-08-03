@@ -112,9 +112,16 @@ class DashboardCard(RoundedFrame):
         top = tk.Frame(self.body, bg=PANEL)
         top.pack(fill="x", padx=16, pady=(14, 4))
 
-        badge = RoundedFrame(top, bg_color=icon_color, radius=9, width=32, height=32)
+        # Plain Canvas here, NOT RoundedFrame: RoundedFrame embeds a child
+        # Frame as a canvas "window" item to hold packable content, and Tk
+        # window-items always render ABOVE everything drawn on the canvas
+        # (tag_lower/tag_raise has no effect on them) -- that was hiding the
+        # icon completely. This badge only ever needs to show a rounded
+        # swatch + icon, no packable children, so a plain Canvas is correct.
+        badge = tk.Canvas(top, width=32, height=32, bg=PANEL, highlightthickness=0, bd=0)
         badge.pack(side="left")
-        badge.after_idle(lambda: draw_icon(badge, icon, 6, 6, 20, color="white", width=2.0))
+        draw_rounded_rect(badge, 0, 0, 32, 32, 9, fill=icon_color, outline=icon_color)
+        draw_icon(badge, icon, 6, 6, 20, color="white", width=2.0)
 
         tk.Label(top, text=label, bg=PANEL, fg=SUBTLE, font=(ui_font, 9),
                  anchor="w").pack(side="left", padx=(10, 0))
